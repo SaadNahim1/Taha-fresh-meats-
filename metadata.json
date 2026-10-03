@@ -1,0 +1,6 @@
+{
+  "name": "Taha's Fresh Meat - Encomendas",
+  "description": "Catálogo online e encomendas por WhatsApp para Taha's Fresh Meat - Carne 100% Halal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

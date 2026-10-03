@@ -14,7 +14,10 @@ import {
   Phone,
   CreditCard,
   FileText,
-  AlertCircle
+  AlertCircle,
+  Truck,
+  Clock,
+  Sparkles
 } from 'lucide-react';
 
 interface CartCheckoutModalProps {
@@ -27,6 +30,13 @@ interface CartCheckoutModalProps {
   onRemoveItem: (productId: string) => void;
   onClearCart: () => void;
 }
+
+const DELIVERY_ZONES = [
+  { id: 'maputo_centro', name: 'Maputo Cidade (Polana, Sommerschield, Central, Coop)', fee: 150, freeAbove: 2500 },
+  { id: 'costa_do_sol', name: 'Costa do Sol, Triunfo, Dona Alice', fee: 200, freeAbove: 3000 },
+  { id: 'matola', name: 'Matola (Centro, Rio Cávado, Malhampsene)', fee: 250, freeAbove: 3500 },
+  { id: 'outra', name: 'Outra Zona / Arredores (a calcular no WhatsApp)', fee: 0, freeAbove: 0 },
+];
 
 export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   isOpen,
@@ -47,60 +57,81 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
     notes: '',
   });
 
+  const [selectedZoneId, setSelectedZoneId] = useState<string>('maputo_centro');
+  const [preferredTime, setPreferredTime] = useState<string>('O mais breve possível');
   const [copied, setCopied] = useState(false);
   const [validationError, setValidationError] = useState('');
 
   if (!isOpen) return null;
 
+  const currentZone = DELIVERY_ZONES.find((z) => z.id === selectedZoneId) || DELIVERY_ZONES[0];
+  const isFreeDelivery =
+    customerInfo.orderType === 'delivery' &&
+    currentZone.freeAbove > 0 &&
+    totalPrice >= currentZone.freeAbove;
+
+  const deliveryFee =
+    customerInfo.orderType === 'pickup'
+      ? 0
+      : isFreeDelivery
+      ? 0
+      : currentZone.fee;
+
+  const grandTotal = totalPrice + deliveryFee;
+
   const generateWhatsAppMessage = () => {
-    let msg = `🥩 *PEDIDO - TAHA'S FRESH MEAT* 🥩\n`;
-    msg += `Carne 100% Halal\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let msg = `🥩 *NOVO PEDIDO - TAHA'S FRESH MEAT* 🥩\n`;
+    msg += `Carne 100% Halal Certificada\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-    if (customerInfo.name.trim()) {
-      msg += `👤 *Cliente:* ${customerInfo.name.trim()}\n`;
-    }
+    msg += `👤 *Cliente:* ${customerInfo.name.trim()}\n`;
     if (customerInfo.phone.trim()) {
-      msg += `📱 *Contacto:* ${customerInfo.phone.trim()}\n`;
+      msg += `📱 *Telefone:* ${customerInfo.phone.trim()}\n`;
     }
 
-    msg += `🚚 *Tipo:* ${
-      customerInfo.orderType === 'delivery'
-        ? `Entrega ao domicílio`
-        : `Levantamento na loja`
-    }\n`;
-
-    if (customerInfo.orderType === 'delivery' && customerInfo.address.trim()) {
-      msg += `📍 *Morada:* ${customerInfo.address.trim()}\n`;
+    if (customerInfo.orderType === 'delivery') {
+      msg += `🚚 *Modalidade:* Entrega ao Domicílio\n`;
+      msg += `📍 *Zona:* ${currentZone.name}\n`;
+      msg += `🏠 *Endereço:* ${customerInfo.address.trim()}\n`;
+    } else {
+      msg += `🏪 *Modalidade:* Levantamento no Talho\n`;
     }
 
-    msg += `💳 *Pagamento:* ${customerInfo.paymentMethod}\n\n`;
+    msg += `⏰ *Horário Preferido:* ${preferredTime}\n`;
+    msg += `💳 *Método de Pagamento:* ${customerInfo.paymentMethod}\n\n`;
 
-    msg += `🛒 *ITENS DO PEDIDO:*\n`;
+    msg += `🛒 *PRODUTOS ESCOLHIDOS:*\n`;
     cartItems.forEach((item) => {
       const lineTotal = item.quantity * item.product.price;
       const unitLabel = item.product.isPerKg ? 'kg' : item.product.unit;
       msg += `• ${item.quantity} ${unitLabel} × ${item.product.name} — ${formatPriceMT(lineTotal)}\n`;
     });
 
-    msg += `\n💰 *TOTAL ESTIMADO: ${formatPriceMT(totalPrice)}*\n`;
+    msg += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `📦 Subtotal: ${formatPriceMT(totalPrice)}\n`;
+    if (customerInfo.orderType === 'delivery') {
+      msg += `🛵 Taxa de Entrega: ${
+        isFreeDelivery ? 'GRÁTIS (Campanha valor alto)' : deliveryFee > 0 ? formatPriceMT(deliveryFee) : 'A confirmar'
+      }\n`;
+    }
+    msg += `💰 *TOTAL ESTIMADO: ${formatPriceMT(grandTotal)}*\n`;
 
     if (customerInfo.notes.trim()) {
       msg += `\n📝 *Observações:* ${customerInfo.notes.trim()}\n`;
     }
 
-    msg += `\n_Agradecemos a preferência!_`;
+    msg += `\n_Por favor confirmar a pesagem exata e a disponibilidade. Obrigado!_`;
 
     return msg;
   };
 
   const handleSendWhatsApp = () => {
     if (!customerInfo.name.trim()) {
-      setValidationError('Por favor, informe o seu nome para o pedido.');
+      setValidationError('Por favor, informe o seu nome para o registo do pedido.');
       return;
     }
     if (customerInfo.orderType === 'delivery' && !customerInfo.address.trim()) {
-      setValidationError('Por favor, indique a morada ou bairro para entrega.');
+      setValidationError('Por favor, indique a rua, bairro ou ponto de referência para a entrega.');
       return;
     }
 
@@ -124,26 +155,29 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       aria-labelledby="modal-title"
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
     >
-      <div
-        className="w-full sm:max-w-xl max-h-[92vh] sm:max-h-[85vh] bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-      >
+      <div className="w-full sm:max-w-xl max-h-[94vh] sm:max-h-[88vh] bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-4 bg-[#8b1e1e] text-white">
           <div>
-            <h2 id="modal-title" className="text-lg font-bold">O Seu Pedido</h2>
-            <p className="text-xs text-amber-100/90">
-              {cartItems.length} {cartItems.length === 1 ? 'item' : 'itens'} selecionados
+            <h2 id="modal-title" className="text-lg font-bold flex items-center gap-2">
+              <span>Finalizar Encomenda</span>
+              <span className="bg-amber-400 text-stone-900 text-[10px] uppercase font-black px-1.5 py-0.2 rounded">
+                Halal
+              </span>
+            </h2>
+            <p className="text-xs text-amber-100">
+              {cartItems.length} {cartItems.length === 1 ? 'corte selecionado' : 'cortes selecionados'}
             </p>
           </div>
           <div className="flex items-center gap-2">
             {cartItems.length > 0 && (
               <button
                 onClick={onClearCart}
-                className="text-xs text-red-200 hover:text-white flex items-center gap-1 px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition cursor-pointer"
+                className="text-xs text-red-200 hover:text-white flex items-center gap-1 px-2.5 py-1 rounded bg-black/20 hover:bg-black/30 transition cursor-pointer"
                 title="Esvaziar carrinho"
               >
                 <Trash2 className="w-3 h-3" />
-                <span>Esvaziar</span>
+                <span>Limpar</span>
               </button>
             )}
             <button
@@ -167,12 +201,18 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
           {/* Cart Items List */}
           <div>
-            <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">
-              Resumo dos Produtos
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wider">
+                Produtos no Pedido
+              </h3>
+              <span className="text-[11px] text-stone-400">
+                Ajuste os quilos ou quantidades
+              </span>
+            </div>
+
             {cartItems.length === 0 ? (
               <p className="text-center py-6 text-stone-500 text-sm">
-                O carrinho está vazio. Adicione produtos do catálogo.
+                O carrinho está vazio. Adicione cortes ou produtos do catálogo.
               </p>
             ) : (
               <div className="divide-y divide-stone-100 border border-stone-200 rounded-xl overflow-hidden bg-stone-50/50">
@@ -181,7 +221,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                   return (
                     <div
                       key={product.id}
-                      className="p-3 flex items-center justify-between gap-3 bg-white"
+                      className="p-3 flex items-center justify-between gap-3 bg-white hover:bg-stone-50/70 transition"
                     >
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-stone-900 truncate">
@@ -228,22 +268,19 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                 })}
 
                 {/* Subtotal row */}
-                <div className="p-3.5 bg-stone-100 flex items-center justify-between font-bold">
-                  <span className="text-stone-700 text-sm">Total Estimado:</span>
-                  <span className="text-lg text-[#8b1e1e]">{formatPriceMT(totalPrice)}</span>
+                <div className="p-3 bg-stone-100/90 flex items-center justify-between font-medium text-xs text-stone-700">
+                  <span>Subtotal dos produtos:</span>
+                  <span className="font-bold text-stone-900">{formatPriceMT(totalPrice)}</span>
                 </div>
               </div>
             )}
-            <p className="text-[11px] text-stone-500 mt-1.5 italic">
-              * Quantidades "por kg" contam em quilogramas. O peso exato e o valor final são confirmados com a equipa da Taha's Fresh Meat no WhatsApp.
-            </p>
           </div>
 
           {/* Customer Information Form */}
           {cartItems.length > 0 && (
-            <div className="space-y-3.5 border-t border-stone-200 pt-4">
+            <div className="space-y-4 border-t border-stone-200 pt-4">
               <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wider">
-                Dados do Cliente
+                Dados para Entrega / Levantamento
               </h3>
 
               {/* Name and Phone */}
@@ -251,7 +288,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                 <div>
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
                     <User className="w-3.5 h-3.5 text-stone-400" />
-                    <span>O seu nome *</span>
+                    <span>Nome Completo *</span>
                   </label>
                   <input
                     type="text"
@@ -260,7 +297,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                     onChange={(e) =>
                       setCustomerInfo({ ...customerInfo, name: e.target.value })
                     }
-                    placeholder="Ex: Carlos Machel"
+                    placeholder="Ex: Américo Matusse"
                     className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20 focus:border-[#8b1e1e]"
                   />
                 </div>
@@ -268,7 +305,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                 <div>
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
                     <Phone className="w-3.5 h-3.5 text-stone-400" />
-                    <span>Contacto telefónico</span>
+                    <span>Número de Contacto</span>
                   </label>
                   <input
                     type="tel"
@@ -276,7 +313,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                     onChange={(e) =>
                       setCustomerInfo({ ...customerInfo, phone: e.target.value })
                     }
-                    placeholder="Ex: 84 / 82 / 86..."
+                    placeholder="Ex: 84 123 4567"
                     className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20 focus:border-[#8b1e1e]"
                   />
                 </div>
@@ -285,7 +322,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
               {/* Order Type Toggle */}
               <div>
                 <label className="text-xs font-semibold text-stone-700 mb-1.5 block">
-                  Modalidade do Pedido
+                  Como prefere receber?
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -299,7 +336,8 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                         : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
                     }`}
                   >
-                    <span>🚚 Entrega ao domicílio</span>
+                    <Truck className="w-3.5 h-3.5" />
+                    <span>Entrega ao domicílio</span>
                   </button>
 
                   <button
@@ -313,57 +351,98 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                         : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
                     }`}
                   >
-                    <span>🏪 Levantamento na loja</span>
+                    <span>Levantamento na loja</span>
                   </button>
                 </div>
               </div>
 
-              {/* Address (if delivery) */}
+              {/* Zone and Address (if delivery) */}
               {customerInfo.orderType === 'delivery' && (
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
-                    <MapPin className="w-3.5 h-3.5 text-stone-400" />
-                    <span>Morada de Entrega (Bairro / Rua / Ponto de ref.) *</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={customerInfo.address}
-                    onChange={(e) =>
-                      setCustomerInfo({ ...customerInfo, address: e.target.value })
-                    }
-                    placeholder="Ex: Sommerschield, Rua dos Lusíadas, Casa 12"
-                    className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20 focus:border-[#8b1e1e]"
-                  />
+                <div className="space-y-3 bg-stone-50 p-3.5 rounded-xl border border-stone-200">
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
+                      <Truck className="w-3.5 h-3.5 text-stone-400" />
+                      <span>Zona de Entrega</span>
+                    </label>
+                    <select
+                      value={selectedZoneId}
+                      onChange={(e) => setSelectedZoneId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20"
+                    >
+                      {DELIVERY_ZONES.map((zone) => (
+                        <option key={zone.id} value={zone.id}>
+                          {zone.name} — {zone.fee > 0 ? `${zone.fee} MT` : 'A combinar'}
+                          {zone.freeAbove > 0 ? ` (Grátis acima de ${zone.freeAbove} MT)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
+                      <MapPin className="w-3.5 h-3.5 text-stone-400" />
+                      <span>Endereço Completo & Ponto de Referência *</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={customerInfo.address}
+                      onChange={(e) =>
+                        setCustomerInfo({ ...customerInfo, address: e.target.value })
+                      }
+                      placeholder="Ex: Polana Cimento, Av. Julius Nyerere, Edifício Mar, Apt 4"
+                      className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20"
+                    />
+                  </div>
                 </div>
               )}
 
-              {/* Payment Method */}
-              <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
-                  <CreditCard className="w-3.5 h-3.5 text-stone-400" />
-                  <span>Método de Pagamento Preferido</span>
-                </label>
-                <select
-                  value={customerInfo.paymentMethod}
-                  onChange={(e) =>
-                    setCustomerInfo({ ...customerInfo, paymentMethod: e.target.value })
-                  }
-                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20 focus:border-[#8b1e1e]"
-                >
-                  <option value="M-Pesa">M-Pesa</option>
-                  <option value="Emola">e-Mola</option>
-                  <option value="Dinheiro na entrega">Dinheiro na entrega</option>
-                  <option value="POS / Cartão">POS / Cartão bancário</option>
-                  <option value="Transferência Bancária">Transferência Bancária (BIM / BCI / Standard)</option>
-                </select>
+              {/* Preferred Delivery Time & Payment Method */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
+                    <Clock className="w-3.5 h-3.5 text-stone-400" />
+                    <span>Horário Preferido</span>
+                  </label>
+                  <select
+                    value={preferredTime}
+                    onChange={(e) => setPreferredTime(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20"
+                  >
+                    <option value="O mais breve possível">O mais breve possível (Hoje)</option>
+                    <option value="Manhã (09:00 - 12:00)">Manhã (09:00 - 12:00)</option>
+                    <option value="Tarde (14:00 - 17:30)">Tarde (14:00 - 17:30)</option>
+                    <option value="Amanhã de manhã">Amanhã de manhã</option>
+                    <option value="Para o fim de semana / Churrasco">Para o fim de semana / Churrasco</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
+                    <CreditCard className="w-3.5 h-3.5 text-stone-400" />
+                    <span>Forma de Pagamento</span>
+                  </label>
+                  <select
+                    value={customerInfo.paymentMethod}
+                    onChange={(e) =>
+                      setCustomerInfo({ ...customerInfo, paymentMethod: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20"
+                  >
+                    <option value="M-Pesa">M-Pesa</option>
+                    <option value="e-Mola">e-Mola</option>
+                    <option value="Dinheiro no momento da entrega">Dinheiro na entrega</option>
+                    <option value="POS / Cartão bancário">POS / Cartão bancário</option>
+                    <option value="Transferência Bancária">Transferência Bancária (BIM / BCI / Standard)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Notes */}
+              {/* Special Notes */}
               <div>
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 mb-1">
                   <FileText className="w-3.5 h-3.5 text-stone-400" />
-                  <span>Observações (sabores, corte dos bifes, horário)</span>
+                  <span>Instruções de Corte ou Observações (opcional)</span>
                 </label>
                 <textarea
                   rows={2}
@@ -371,9 +450,43 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                   onChange={(e) =>
                     setCustomerInfo({ ...customerInfo, notes: e.target.value })
                   }
-                  placeholder="Ex: bifes finos, piri-piri forte, entregar até às 16h..."
-                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20 focus:border-[#8b1e1e]"
+                  placeholder="Ex: bifes finos para prego, separar picanha em duas embalagens, pouco sal..."
+                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]/20"
                 />
+              </div>
+
+              {/* Order Grand Total Box */}
+              <div className="bg-amber-50 p-4 rounded-xl border border-amber-200/80 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-stone-600">
+                  <span>Subtotal das carnes:</span>
+                  <span className="font-semibold">{formatPriceMT(totalPrice)}</span>
+                </div>
+                {customerInfo.orderType === 'delivery' && (
+                  <div className="flex items-center justify-between text-xs text-stone-600">
+                    <span>Taxa de entrega estimada:</span>
+                    <span className="font-semibold">
+                      {isFreeDelivery ? (
+                        <span className="text-emerald-700 font-bold">GRÁTIS</span>
+                      ) : deliveryFee > 0 ? (
+                        formatPriceMT(deliveryFee)
+                      ) : (
+                        'A confirmar'
+                      )}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1 border-t border-amber-200 text-sm font-bold text-stone-900">
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                    <span>Total Estimado:</span>
+                  </span>
+                  <span className="text-base text-[#8b1e1e] font-black">
+                    {formatPriceMT(grandTotal)}
+                  </span>
+                </div>
+                <p className="text-[10px] text-stone-500 italic mt-1">
+                  * Os cortes de carne pesados a granel podem ter uma pequena variação de gramas que será confirmada no talho.
+                </p>
               </div>
             </div>
           )}
@@ -388,7 +501,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                 className="w-full py-3 px-4 rounded-xl bg-[#25d366] hover:bg-[#20ba59] active:scale-98 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                <span>Enviar Pedido por WhatsApp</span>
+                <span>Enviar Pedido ao Talho no WhatsApp</span>
               </button>
 
               <div className="flex items-center gap-2">

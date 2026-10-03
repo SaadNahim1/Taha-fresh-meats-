@@ -1,46 +1,49 @@
 import React from 'react';
 import { TAHA_LOGO_BASE64, STORE_NAME, STORE_TAGLINE } from '../assets/logo';
-import { Phone, ShieldCheck, Github, Settings, Share2 } from 'lucide-react';
+import { Phone, ShieldCheck, Clock, MapPin, MessageCircle } from 'lucide-react';
 
 interface HeaderProps {
   whatsAppNumber: string;
-  onOpenGitHubModal: () => void;
-  onOpenSettingsModal: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({
-  whatsAppNumber,
-  onOpenGitHubModal,
-  onOpenSettingsModal,
-}) => {
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: STORE_NAME,
-          text: "Catálogo online e encomendas de carnes 100% Halal - Taha's Fresh Meat",
-          url: window.location.href,
-        });
-      } catch {
-        // Share cancelled
-      }
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-      alert('Link do catálogo copiado para a área de transferência!');
-    }
-  };
-
+export const Header: React.FC<HeaderProps> = ({ whatsAppNumber }) => {
   return (
-    <header className="bg-gradient-to-r from-[#741515] via-[#8b1e1e] to-[#601212] text-white shadow-lg border-b border-[#a82a2a]/30">
+    <header className="bg-gradient-to-b from-[#6b1414] via-[#8b1e1e] to-[#741515] text-white shadow-md border-b border-[#a82a2a]/30">
+      {/* Top micro bar with contact & hours */}
+      <div className="bg-[#4d0c0c] text-amber-200/90 text-[11px] py-1.5 px-4 border-b border-white/10">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3 text-amber-400" />
+              <span>Seg - Sáb: 08:00 - 18:30 | Dom: 08:00 - 13:00</span>
+            </span>
+            <span className="hidden md:flex items-center gap-1 text-white/80">
+              <MapPin className="w-3 h-3 text-red-400" />
+              <span>Maputo e Matola, Moçambique</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <a
+              href={`tel:+${whatsAppNumber}`}
+              className="hover:text-white transition flex items-center gap-1 font-semibold"
+            >
+              <Phone className="w-3 h-3 text-emerald-400" />
+              <span>+258 84 752 1920</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Brand Banner */}
       <div className="max-w-4xl mx-auto px-4 py-4 sm:py-5">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          {/* Brand info */}
-          <div className="flex items-center gap-3.5 w-full sm:w-auto">
-            <div className="relative">
+          {/* Logo & Brand Details */}
+          <div className="flex items-center gap-3.5 w-full sm:w-auto text-left">
+            <div className="relative flex-none">
               <img
                 src={TAHA_LOGO_BASE64}
                 alt={STORE_NAME}
-                className="w-16 h-16 sm:w-18 sm:h-18 rounded-full border-2 border-amber-300/80 shadow-md object-cover bg-white"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-amber-300 shadow-md object-cover bg-white"
               />
               <span
                 className="absolute -bottom-1 -right-1 bg-emerald-600 text-white p-1 rounded-full text-[10px] shadow"
@@ -51,64 +54,43 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white drop-shadow-sm">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white drop-shadow-sm">
                   {STORE_NAME}
                 </h1>
-                <span className="hidden sm:inline-flex items-center gap-1 bg-emerald-800/80 text-emerald-200 text-xs px-2 py-0.5 rounded-full font-medium border border-emerald-600/40">
-                  <ShieldCheck className="w-3 h-3" /> 100% Halal
+                <span className="inline-flex items-center gap-1 bg-emerald-900/80 text-emerald-200 text-xs px-2.5 py-0.5 rounded-full font-bold border border-emerald-500/40">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> 100% Halal
                 </span>
               </div>
-              <p className="text-xs sm:text-sm text-amber-100/90 font-medium">
-                {STORE_TAGLINE}
+              <p className="text-xs sm:text-sm text-amber-100 font-medium mt-0.5">
+                Talho & Carnes Nobres Frescas · Cortes Especiais & Encomendas Rápidas
               </p>
-              <div className="flex items-center gap-2 mt-1 sm:hidden">
-                <span className="inline-flex items-center gap-1 bg-emerald-900/60 text-emerald-200 text-[11px] px-2 py-0.5 rounded-full font-medium">
-                  <ShieldCheck className="w-3 h-3" /> 100% Halal
-                </span>
-                <span className="text-[11px] text-white/70">
-                  WhatsApp: +{whatsAppNumber}
-                </span>
-              </div>
+              <p className="text-[11px] text-amber-200/80 mt-1">
+                {STORE_TAGLINE} · Entregas ao Domicílio
+              </p>
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end border-t border-white/10 sm:border-0 pt-2.5 sm:pt-0">
-            <button
-              onClick={handleShare}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition text-xs font-medium text-amber-100 border border-white/15"
-              title="Partilhar Catálogo"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Partilhar</span>
-            </button>
-
-            <button
-              onClick={onOpenGitHubModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/30 hover:bg-black/40 active:scale-95 transition text-xs font-medium text-white border border-white/20"
-              title="Conectar com GitHub"
-            >
-              <Github className="w-3.5 h-3.5" />
-              <span className="font-semibold">GitHub</span>
-            </button>
-
-            <button
-              onClick={onOpenSettingsModal}
-              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition text-amber-100 border border-white/15"
-              title="Configurações do WhatsApp"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-
+          {/* Customer Call to Actions */}
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end border-t border-white/10 sm:border-0 pt-3 sm:pt-0">
             <a
-              href={`https://wa.me/${whatsAppNumber}`}
+              href={`https://wa.me/${whatsAppNumber}?text=${encodeURIComponent(
+                'Olá! Gostaria de obter informações sobre o catálogo e encomendas da Taha\'s Fresh Meat.'
+              )}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#25d366] hover:bg-[#20ba59] active:scale-95 transition text-xs font-bold text-white shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#25d366] hover:bg-[#20ba59] active:scale-95 transition text-xs font-bold text-white shadow-md cursor-pointer"
             >
-              <Phone className="w-3.5 h-3.5" />
-              <span>WhatsApp</span>
+              <MessageCircle className="w-4 h-4" />
+              <span>Falar no WhatsApp</span>
+            </a>
+
+            <a
+              href={`tel:+${whatsAppNumber}`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition text-xs font-semibold text-white border border-white/20"
+            >
+              <Phone className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden sm:inline">Ligar</span>
             </a>
           </div>
         </div>

@@ -5,20 +5,28 @@ import { DEFAULT_WHATSAPP_NUMBER } from './assets/logo';
 import { Header } from './components/Header';
 import { SearchBar } from './components/SearchBar';
 import { CategoryChips } from './components/CategoryChips';
+import { QuickFilters } from './components/QuickFilters';
 import { ProductCard } from './components/ProductCard';
 import { CartFloatingBar } from './components/CartFloatingBar';
 import { CartCheckoutModal } from './components/CartCheckoutModal';
 import { GitHubModal } from './components/GitHubModal';
 import { StoreSettingsModal } from './components/StoreSettingsModal';
+import { ShareModal } from './components/ShareModal';
+import { StoreFaq } from './components/StoreFaq';
 import {
   ShieldCheck,
   Truck,
   MessageCircle,
   HelpCircle,
-  Sparkles,
   ShoppingBag,
   Flame,
-  ArrowUp
+  ArrowUp,
+  Settings,
+  Share2,
+  Phone,
+  Clock,
+  MapPin,
+  CheckCircle2
 } from 'lucide-react';
 
 export default function App() {
@@ -29,6 +37,7 @@ export default function App() {
 
   // Category and Search state
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [activeSpecialFilter, setActiveSpecialFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   // Cart state
@@ -45,6 +54,7 @@ export default function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Scroll to top button visibility
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -115,29 +125,55 @@ export default function App() {
     return cartItems.reduce((acc, item) => acc + item.quantity * item.product.price, 0);
   }, [cartItems]);
 
-  // Filter products by category and search
+  const handleSelectSpecialFilter = (filterType: string) => {
+    setActiveSpecialFilter(filterType);
+    if (filterType === 'all') {
+      setSelectedCategoryId('');
+    } else if (filterType === 'vaca') {
+      setSelectedCategoryId('0');
+    } else if (filterType === 'temperadas') {
+      setSelectedCategoryId('1');
+    } else if (filterType === 'marisco') {
+      setSelectedCategoryId('2');
+    } else if (filterType === 'frango') {
+      setSelectedCategoryId('8');
+    } else {
+      setSelectedCategoryId('');
+    }
+  };
+
+  // Filter products by category, special filter, and search
   const filteredProducts = useMemo(() => {
     return ALL_PRODUCTS.filter((product) => {
+      // Special filter
+      if (activeSpecialFilter === 'destaques' && !product.popular) {
+        return false;
+      }
+
+      // Category filter
       const matchesCategory =
         selectedCategoryId === '' || product.categoryId === selectedCategoryId;
 
+      // Search term
+      const cleanTerm = searchTerm.toLowerCase().trim();
       const matchesSearch =
-        !searchTerm.trim() ||
-        product.name.toLowerCase().includes(searchTerm.toLowerCase().trim()) ||
-        product.category.toLowerCase().includes(searchTerm.toLowerCase().trim());
+        !cleanTerm ||
+        product.name.toLowerCase().includes(cleanTerm) ||
+        product.category.toLowerCase().includes(cleanTerm);
 
       return matchesCategory && matchesSearch;
     });
-  }, [selectedCategoryId, searchTerm]);
+  }, [selectedCategoryId, activeSpecialFilter, searchTerm]);
 
   // Counts per category for the filter pills
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     ALL_PRODUCTS.forEach((product) => {
+      const cleanTerm = searchTerm.toLowerCase().trim();
       if (
-        !searchTerm.trim() ||
-        product.name.toLowerCase().includes(searchTerm.toLowerCase().trim()) ||
-        product.category.toLowerCase().includes(searchTerm.toLowerCase().trim())
+        !cleanTerm ||
+        product.name.toLowerCase().includes(cleanTerm) ||
+        product.category.toLowerCase().includes(cleanTerm)
       ) {
         counts[product.categoryId] = (counts[product.categoryId] || 0) + 1;
       }
@@ -178,26 +214,26 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#faf6f2] text-[#2b2b2b] flex flex-col font-sans pb-28">
       {/* Header */}
-      <Header
-        whatsAppNumber={whatsAppNumber}
-        onOpenGitHubModal={() => setIsGitHubModalOpen(true)}
-        onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-      />
+      <Header whatsAppNumber={whatsAppNumber} />
 
       {/* Trust & Guarantee Banner */}
-      <div className="bg-amber-100/70 border-b border-amber-200/80 text-amber-950 py-2 px-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4 text-xs font-medium overflow-x-auto no-scrollbar">
+      <div className="bg-amber-100/80 border-b border-amber-200/90 text-amber-950 py-2.5 px-4 shadow-2xs">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4 text-xs font-semibold overflow-x-auto no-scrollbar">
           <div className="flex items-center gap-1.5 flex-none">
             <ShieldCheck className="w-4 h-4 text-emerald-700 flex-none" />
-            <span>Carne 100% Halal Certificada</span>
+            <span>100% Halal Certificado</span>
           </div>
-          <div className="hidden sm:flex items-center gap-1.5 flex-none">
+          <div className="flex items-center gap-1.5 flex-none">
             <Truck className="w-4 h-4 text-[#8b1e1e] flex-none" />
-            <span>Entregas rápidas em Maputo e Matola</span>
+            <span>Entregas Rápidas em Maputo & Matola</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-none">
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 flex-none" />
+            <span>Pesagem e Corte no Próprio Dia</span>
           </div>
           <div className="flex items-center gap-1.5 flex-none">
             <MessageCircle className="w-4 h-4 text-emerald-700 flex-none" />
-            <span>Confirmação direta no WhatsApp</span>
+            <span>Confirmação Imediata no WhatsApp</span>
           </div>
         </div>
       </div>
@@ -210,10 +246,19 @@ export default function App() {
             onSearchChange={setSearchTerm}
             resultCount={filteredProducts.length}
           />
+          <QuickFilters
+            onSelectSpecialFilter={handleSelectSpecialFilter}
+            activeSpecialFilter={activeSpecialFilter}
+          />
           <CategoryChips
             categories={CATEGORIES}
             selectedCategoryId={selectedCategoryId}
-            onSelectCategory={setSelectedCategoryId}
+            onSelectCategory={(id) => {
+              setSelectedCategoryId(id);
+              if (activeSpecialFilter === 'destaques') {
+                setActiveSpecialFilter('all');
+              }
+            }}
             categoryCounts={categoryCounts}
             totalCount={ALL_PRODUCTS.length}
           />
@@ -231,12 +276,13 @@ export default function App() {
               Nenhum produto encontrado
             </h3>
             <p className="text-xs text-stone-500 max-w-sm mx-auto mt-1 mb-4">
-              Não encontramos resultados para a pesquisa "{searchTerm}". Tente outra palavra ou limpe o filtro.
+              Não encontramos resultados para "{searchTerm}". Experimente outra pesquisa ou limpe os filtros.
             </p>
             <button
               onClick={() => {
                 setSearchTerm('');
                 setSelectedCategoryId('');
+                setActiveSpecialFilter('all');
               }}
               className="px-4 py-2 bg-[#8b1e1e] text-white rounded-xl text-xs font-semibold hover:bg-[#731717] transition cursor-pointer"
             >
@@ -276,30 +322,47 @@ export default function App() {
           ))
         )}
 
-        {/* How Ordering Works Section */}
-        <section className="mt-12 bg-white rounded-2xl border border-stone-200 p-5 sm:p-6 shadow-xs">
-          <h2 className="text-base font-bold text-stone-900 mb-3 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <span>Como funciona a encomenda?</span>
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-stone-600">
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-100">
-              <span className="font-bold text-stone-900 block mb-1">
-                1. Escolha os cortes e produtos
-              </span>
-              Selecione as quantidades pretendidas (em kg ou unidades) diretamente no catálogo.
+        {/* Store FAQ */}
+        <StoreFaq />
+
+        {/* Butcher Store Contact & Location Card */}
+        <section className="bg-stone-900 text-stone-200 rounded-2xl p-5 sm:p-6 shadow-md border border-stone-800">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-xs">
+            <div>
+              <h3 className="text-white font-bold text-sm mb-2 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span>Horário de Funcionamento</span>
+              </h3>
+              <p className="text-stone-400">Segunda a Sábado: 08:00 - 18:30</p>
+              <p className="text-stone-400">Domingo: 08:00 - 13:00</p>
+              <p className="text-emerald-400 font-semibold mt-1">● Aberto para encomendas</p>
             </div>
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-100">
-              <span className="font-bold text-stone-900 block mb-1">
-                2. Indique nome e morada
-              </span>
-              Clique em "Finalizar Pedido" para preencher o seu nome e opção de entrega ou levantamento.
+
+            <div>
+              <h3 className="text-white font-bold text-sm mb-2 flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-red-400" />
+                <span>Zonas de Entrega</span>
+              </h3>
+              <p className="text-stone-400">Maputo Cidade, Polana, Sommerschield</p>
+              <p className="text-stone-400">Costa do Sol, Triunfo e Matola</p>
+              <p className="text-amber-300 font-semibold mt-1">Entrega grátis para pedidos grandes</p>
             </div>
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-100">
-              <span className="font-bold text-stone-900 block mb-1">
-                3. Envio por WhatsApp
-              </span>
-              O pedido é enviado pronto para o WhatsApp do talho para pesagem e entrega imediata.
+
+            <div>
+              <h3 className="text-white font-bold text-sm mb-2 flex items-center gap-1.5">
+                <Phone className="w-4 h-4 text-emerald-400" />
+                <span>Contacto Direto</span>
+              </h3>
+              <p className="text-stone-400">WhatsApp: +{whatsAppNumber}</p>
+              <p className="text-stone-400">Atendimento personalizado para restaurantes, eventos e famílias.</p>
+              <a
+                href={`https://wa.me/${whatsAppNumber}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-semibold underline"
+              >
+                Conversar no WhatsApp
+              </a>
             </div>
           </div>
         </section>
@@ -325,28 +388,39 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-stone-200/80 bg-white/70 py-6 px-4 text-center text-xs text-stone-500">
-        <div className="max-w-4xl mx-auto space-y-2">
+      <footer className="mt-auto border-t border-stone-200/80 bg-white/80 py-6 px-4 text-center text-xs text-stone-500">
+        <div className="max-w-4xl mx-auto space-y-3">
           <p className="font-semibold text-stone-800">
             Taha's Fresh Meat · Carne 100% Halal
           </p>
           <p>
-            Catálogo digital de encomendas diretas por WhatsApp · Moçambique (+{whatsAppNumber})
+            Catálogo digital de encomendas diretas por WhatsApp · Maputo, Moçambique
           </p>
-          <div className="flex items-center justify-center gap-3 pt-2 text-[11px]">
+
+          {/* Admin / Presentation controls */}
+          <div className="flex items-center justify-center gap-3 pt-3 border-t border-stone-100 text-[11px] flex-wrap">
             <button
-              onClick={() => setIsGitHubModalOpen(true)}
-              className="text-[#8b1e1e] hover:underline font-semibold cursor-pointer inline-flex items-center gap-1"
+              onClick={() => setIsShareModalOpen(true)}
+              className="text-[#8b1e1e] hover:underline font-bold cursor-pointer inline-flex items-center gap-1"
             >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>Conectar com GitHub</span>
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Partilhar / Mostrar ao Cliente (QR Code)</span>
             </button>
             <span>•</span>
             <button
               onClick={() => setIsSettingsModalOpen(true)}
-              className="hover:underline cursor-pointer"
+              className="text-stone-600 hover:underline cursor-pointer inline-flex items-center gap-1"
             >
-              Alterar número WhatsApp
+              <Settings className="w-3.5 h-3.5" />
+              <span>Número do WhatsApp (+{whatsAppNumber})</span>
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setIsGitHubModalOpen(true)}
+              className="text-stone-600 hover:underline cursor-pointer inline-flex items-center gap-1"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Conectar com GitHub</span>
             </button>
           </div>
         </div>
@@ -374,6 +448,12 @@ export default function App() {
         onClose={() => setIsSettingsModalOpen(false)}
         currentWhatsApp={whatsAppNumber}
         onSaveWhatsApp={handleSaveWhatsApp}
+      />
+
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        publicUrl={window.location.href}
       />
     </div>
   );

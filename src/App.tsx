@@ -13,6 +13,7 @@ import { GitHubModal } from './components/GitHubModal';
 import { StoreSettingsModal } from './components/StoreSettingsModal';
 import { ShareModal } from './components/ShareModal';
 import { StoreFaq } from './components/StoreFaq';
+import { StockManagementModal } from './components/StockManagementModal';
 import {
   ShieldCheck,
   Truck,
@@ -26,7 +27,8 @@ import {
   Phone,
   Clock,
   MapPin,
-  CheckCircle2
+  CheckCircle2,
+  Sliders
 } from 'lucide-react';
 
 export default function App() {
@@ -55,9 +57,45 @@ export default function App() {
   const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isStockModalOpen, setIsStockModalOpen] = useState(false);
+
+  // Stock and custom price state (saved in localStorage for the butchery manager)
+  const [outOfStockIds, setOutOfStockIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('tahas_out_of_stock');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [customPrices, setCustomPrices] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('tahas_custom_prices');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
 
   // Scroll to top button visibility
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // Check if URL has ?admin=1 or ?gestor=1 to directly open management for the owner
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (
+        params.get('admin') === '1' ||
+        params.get('gestor') === '1' ||
+        params.get('stock') === '1'
+      ) {
+        setIsStockModalOpen(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('tahas_cart', JSON.stringify(cart));
@@ -75,6 +113,41 @@ export default function App() {
     setWhatsAppNumber(num);
     localStorage.setItem('tahas_whatsapp', num);
   };
+
+  const handleToggleStock = (productId: string) => {
+    setOutOfStockIds((prev) => {
+      const exists = prev.includes(productId);
+      const updated = exists ? prev.filter((id) => id !== productId) : [...prev, productId];
+      localStorage.setItem('tahas_out_of_stock', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleUpdatePrice = (productId: string, newPrice: number) => {
+    setCustomPrices((prev) => {
+      const updated = { ...prev, [productId]: newPrice };
+      localStorage.setItem('tahas_custom_prices', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleResetAllStock = () => {
+    setOutOfStockIds([]);
+    localStorage.removeItem('tahas_out_of_stock');
+  };
+
+  // Products with dynamic stock status and prices applied
+  const productsWithStatus: Product[] = useMemo(() => {
+    const outSet = new Set(outOfStockIds);
+    return ALL_PRODUCTS.map((prod) => {
+      const customPrice = customPrices[prod.id];
+      return {
+        ...prod,
+        price: customPrice !== undefined ? customPrice : prod.price,
+        outOfStock: outSet.has(prod.id),
+      };
+    });
+  }, [outOfStockIds, customPrices]);
 
   // Update product quantity in cart
   const updateQuantity = (productId: string, delta: number) => {
@@ -108,14 +181,14 @@ export default function App() {
     const items: CartItem[] = [];
     Object.entries(cart).forEach(([id, quantity]) => {
       if (quantity > 0) {
-        const product = ALL_PRODUCTS.find((p) => p.id === id);
+        const product = productsWithStatus.find((p) => p.id === id);
         if (product) {
           items.push({ product, quantity });
         }
       }
     });
     return items;
-  }, [cart]);
+  }, [cart, productsWithStatus]);
 
   const totalCartCount = useMemo(() => {
     return cartItems.length;
@@ -144,7 +217,7 @@ export default function App() {
 
   // Filter products by category, special filter, and search
   const filteredProducts = useMemo(() => {
-    return ALL_PRODUCTS.filter((product) => {
+    return productsWithStatus.filter((product) => {
       // Special filter
       if (activeSpecialFilter === 'destaques' && !product.popular) {
         return false;
@@ -163,12 +236,12 @@ export default function App() {
 
       return matchesCategory && matchesSearch;
     });
-  }, [selectedCategoryId, activeSpecialFilter, searchTerm]);
+  }, [productsWithStatus, selectedCategoryId, activeSpecialFilter, searchTerm]);
 
   // Counts per category for the filter pills
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    ALL_PRODUCTS.forEach((product) => {
+    productsWithStatus.forEach((product) => {
       const cleanTerm = searchTerm.toLowerCase().trim();
       if (
         !cleanTerm ||
@@ -179,7 +252,7 @@ export default function App() {
       }
     });
     return counts;
-  }, [searchTerm]);
+  }, [productsWithStatus, searchTerm]);
 
   // Group displayed products by category
   const groupedProducts = useMemo(() => {
@@ -400,6 +473,15 @@ export default function App() {
           {/* Admin / Presentation controls */}
           <div className="flex items-center justify-center gap-3 pt-3 border-t border-stone-100 text-[11px] flex-wrap">
             <button
+              onClick={() => setIsStockModalOpen(true)}
+              className="text-[#8b1e1e] hover:underline font-bold cursor-pointer inline-flex items-center gap-1 bg-amber-100/90 px-2.5 py-1 rounded-lg border border-amber-300 shadow-2xs hover:bg-amber-200/90 transition"
+              title="Gerir disponibilidade de stock e preços"
+            >
+              <Sliders className="w-3.5 h-3.5 text-[#8b1e1e]" />
+              <span>Gerir Stock & Preços (Modo Talho)</span>
+            </button>
+            <span>•</span>
+            <button
               onClick={() => setIsShareModalOpen(true)}
               className="text-[#8b1e1e] hover:underline font-bold cursor-pointer inline-flex items-center gap-1"
             >
@@ -436,6 +518,17 @@ export default function App() {
         onUpdateQuantity={updateQuantity}
         onRemoveItem={removeItem}
         onClearCart={clearCart}
+      />
+
+      <StockManagementModal
+        isOpen={isStockModalOpen}
+        onClose={() => setIsStockModalOpen(false)}
+        products={productsWithStatus}
+        outOfStockIds={outOfStockIds}
+        customPrices={customPrices}
+        onToggleStock={handleToggleStock}
+        onUpdatePrice={handleUpdatePrice}
+        onResetAll={handleResetAllStock}
       />
 
       <GitHubModal

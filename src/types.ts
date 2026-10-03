@@ -9,6 +9,7 @@ export interface Product {
   step: number;
   badge?: string;
   popular?: boolean;
+  outOfStock?: boolean;
 }
 
 export interface Category {

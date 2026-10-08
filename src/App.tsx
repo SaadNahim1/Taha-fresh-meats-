@@ -1,7 +1,17 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ALL_PRODUCTS, CATEGORIES } from './data/catalog';
 import { Product, CartItem } from './types';
 import { DEFAULT_WHATSAPP_NUMBER } from './assets/logo';
+import {
+  db,
+  doc,
+  onSnapshot,
+  OperationType,
+  handleFirestoreError,
+  verifyOwnerPinInCloud,
+  saveLiveCatalogToCloud,
+  saveOwnerPinToCloud
+} from './firebase';
 import { Header } from './components/Header';
 import { SearchBar } from './components/SearchBar';
 import { CategoryChips } from './components/CategoryChips';
@@ -9,7 +19,6 @@ import { QuickFilters } from './components/QuickFilters';
 import { ProductCard } from './components/ProductCard';
 import { CartFloatingBar } from './components/CartFloatingBar';
 import { CartCheckoutModal } from './components/CartCheckoutModal';
-import { GitHubModal } from './components/GitHubModal';
 import { StoreSettingsModal } from './components/StoreSettingsModal';
 import { ShareModal } from './components/ShareModal';
 import { StoreFaq } from './components/StoreFaq';
@@ -18,17 +27,15 @@ import {
   ShieldCheck,
   Truck,
   MessageCircle,
-  HelpCircle,
   ShoppingBag,
   Flame,
   ArrowUp,
-  Settings,
   Share2,
   Phone,
   Clock,
   MapPin,
   CheckCircle2,
-  Sliders
+  Lock
 } from 'lucide-react';
 
 export default function App() {
@@ -54,12 +61,11 @@ export default function App() {
 
   // Modals state
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
 
-  // Stock and custom price state (saved in localStorage for the butchery manager)
+  // Stock and custom price state (synced in real time via Firestore)
   const [outOfStockIds, setOutOfStockIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('tahas_out_of_stock');
@@ -78,8 +84,55 @@ export default function App() {
     }
   });
 
+  // Verified Owner PIN session state (no Google account required)
+  const [verifiedPin, setVerifiedPin] = useState<string | null>(() => {
+    return sessionStorage.getItem('tahas_verified_pin');
+  });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
   // Scroll to top button visibility
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // Real-time listener on /catalogConfig/live for all clients
+  useEffect(() => {
+    const path = 'catalogConfig/live';
+    const ref = doc(db, 'catalogConfig', 'live');
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data.outOfStockMap && typeof data.outOfStockMap === 'object') {
+            const ids = Object.keys(data.outOfStockMap).filter(
+              (k) => data.outOfStockMap[k] === true
+            );
+            setOutOfStockIds(ids);
+            localStorage.setItem('tahas_out_of_stock', JSON.stringify(ids));
+          }
+          if (data.customPrices && typeof data.customPrices === 'object') {
+            const prices: Record<string, number> = {};
+            Object.entries(data.customPrices).forEach(([k, v]) => {
+              if (typeof v === 'number' && v > 0) {
+                prices[k] = v;
+              }
+            });
+            setCustomPrices(prices);
+            localStorage.setItem('tahas_custom_prices', JSON.stringify(prices));
+          }
+          if (typeof data.orderWhatsApp === 'string' && data.orderWhatsApp.length >= 8) {
+            setWhatsAppNumber(data.orderWhatsApp);
+            localStorage.setItem('tahas_whatsapp', data.orderWhatsApp);
+          }
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // Check if URL has ?admin=1 or ?gestor=1 to directly open management for the owner
   useEffect(() => {
@@ -109,9 +162,57 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const syncCatalogState = useCallback(
+    async (
+      nextOutOfStock: string[],
+      nextPrices: Record<string, number>,
+      nextWhatsApp: string,
+      pinOverride?: string
+    ) => {
+      const activePin = pinOverride || verifiedPin;
+      if (!activePin) return;
+      setIsSyncing(true);
+      setSyncError(null);
+      try {
+        await saveLiveCatalogToCloud({
+          outOfStockIds: nextOutOfStock,
+          customPrices: nextPrices,
+          orderWhatsApp: nextWhatsApp,
+          pinCode: activePin,
+        });
+      } catch (err) {
+        setSyncError(
+          err instanceof Error
+            ? err.message
+            : 'Não foi possível sincronizar na nuvem.'
+        );
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [verifiedPin]
+  );
+
+  const handleVerifyPin = async (pinInput: string): Promise<boolean> => {
+    setSyncError(null);
+    const valid = await verifyOwnerPinInCloud(pinInput);
+    if (valid) {
+      setVerifiedPin(pinInput);
+      sessionStorage.setItem('tahas_verified_pin', pinInput);
+      return true;
+    }
+    return false;
+  };
+
+  const handleLockPanel = () => {
+    setVerifiedPin(null);
+    sessionStorage.removeItem('tahas_verified_pin');
+  };
+
   const handleSaveWhatsApp = (num: string) => {
     setWhatsAppNumber(num);
     localStorage.setItem('tahas_whatsapp', num);
+    void syncCatalogState(outOfStockIds, customPrices, num);
   };
 
   const handleToggleStock = (productId: string) => {
@@ -119,6 +220,7 @@ export default function App() {
       const exists = prev.includes(productId);
       const updated = exists ? prev.filter((id) => id !== productId) : [...prev, productId];
       localStorage.setItem('tahas_out_of_stock', JSON.stringify(updated));
+      void syncCatalogState(updated, customPrices, whatsAppNumber);
       return updated;
     });
   };
@@ -127,6 +229,7 @@ export default function App() {
     setCustomPrices((prev) => {
       const updated = { ...prev, [productId]: newPrice };
       localStorage.setItem('tahas_custom_prices', JSON.stringify(updated));
+      void syncCatalogState(outOfStockIds, updated, whatsAppNumber);
       return updated;
     });
   };
@@ -134,6 +237,22 @@ export default function App() {
   const handleResetAllStock = () => {
     setOutOfStockIds([]);
     localStorage.removeItem('tahas_out_of_stock');
+    void syncCatalogState([], customPrices, whatsAppNumber);
+  };
+
+  const handleUpdatePin = async (newPin: string) => {
+    if (!verifiedPin) {
+      throw new Error('Desbloqueie o painel primeiro.');
+    }
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await saveOwnerPinToCloud(verifiedPin, newPin);
+      setVerifiedPin(newPin);
+      sessionStorage.setItem('tahas_verified_pin', newPin);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Products with dynamic stock status and prices applied
@@ -182,7 +301,7 @@ export default function App() {
     Object.entries(cart).forEach(([id, quantity]) => {
       if (quantity > 0) {
         const product = productsWithStatus.find((p) => p.id === id);
-        if (product) {
+        if (product && !product.outOfStock) {
           items.push({ product, quantity });
         }
       }
@@ -218,16 +337,13 @@ export default function App() {
   // Filter products by category, special filter, and search
   const filteredProducts = useMemo(() => {
     return productsWithStatus.filter((product) => {
-      // Special filter
       if (activeSpecialFilter === 'destaques' && !product.popular) {
         return false;
       }
 
-      // Category filter
       const matchesCategory =
         selectedCategoryId === '' || product.categoryId === selectedCategoryId;
 
-      // Search term
       const cleanTerm = searchTerm.toLowerCase().trim();
       const matchesSearch =
         !cleanTerm ||
@@ -286,8 +402,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#faf6f2] text-[#2b2b2b] flex flex-col font-sans pb-28">
-      {/* Header */}
-      <Header whatsAppNumber={whatsAppNumber} />
+      {/* Header (with secret triple-tap on logo for the owner) */}
+      <Header
+        whatsAppNumber={whatsAppNumber}
+        onSecretUnlock={() => setIsStockModalOpen(true)}
+      />
 
       {/* Trust & Guarantee Banner */}
       <div className="bg-amber-100/80 border-b border-amber-200/90 text-amber-950 py-2.5 px-4 shadow-2xs">
@@ -349,7 +468,7 @@ export default function App() {
               Nenhum produto encontrado
             </h3>
             <p className="text-xs text-stone-500 max-w-sm mx-auto mt-1 mb-4">
-              Não encontramos resultados para "{searchTerm}". Experimente outra pesquisa ou limpe os filtros.
+              Não encontramos resultados para &ldquo;{searchTerm}&rdquo;. Experimente outra pesquisa ou limpe os filtros.
             </p>
             <button
               onClick={() => {
@@ -460,49 +579,32 @@ export default function App() {
         </button>
       )}
 
-      {/* Footer */}
+      {/* Clean Customer Footer with Discreet Hidden Lock for Owner */}
       <footer className="mt-auto border-t border-stone-200/80 bg-white/80 py-6 px-4 text-center text-xs text-stone-500">
-        <div className="max-w-4xl mx-auto space-y-3">
+        <div className="max-w-4xl mx-auto space-y-2.5">
           <p className="font-semibold text-stone-800">
-            Taha's Fresh Meat · Carne 100% Halal
+            Taha&apos;s Fresh Meat · Carne 100% Halal
           </p>
           <p>
             Catálogo digital de encomendas diretas por WhatsApp · Maputo, Moçambique
           </p>
 
-          {/* Admin / Presentation controls */}
-          <div className="flex items-center justify-center gap-3 pt-3 border-t border-stone-100 text-[11px] flex-wrap">
-            <button
-              onClick={() => setIsStockModalOpen(true)}
-              className="text-[#8b1e1e] hover:underline font-bold cursor-pointer inline-flex items-center gap-1 bg-amber-100/90 px-2.5 py-1 rounded-lg border border-amber-300 shadow-2xs hover:bg-amber-200/90 transition"
-              title="Gerir disponibilidade de stock e preços"
-            >
-              <Sliders className="w-3.5 h-3.5 text-[#8b1e1e]" />
-              <span>Gerir Stock & Preços (Modo Talho)</span>
-            </button>
-            <span>•</span>
+          <div className="flex items-center justify-center gap-3 pt-2 text-[11px]">
             <button
               onClick={() => setIsShareModalOpen(true)}
-              className="text-[#8b1e1e] hover:underline font-bold cursor-pointer inline-flex items-center gap-1"
+              className="text-[#8b1e1e] hover:underline font-semibold cursor-pointer inline-flex items-center gap-1"
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span>Partilhar / Mostrar ao Cliente (QR Code)</span>
+              <span>Partilhar Catálogo (QR Code)</span>
             </button>
-            <span>•</span>
+
+            {/* Discreet hidden lock icon for the store owner */}
             <button
-              onClick={() => setIsSettingsModalOpen(true)}
-              className="text-stone-600 hover:underline cursor-pointer inline-flex items-center gap-1"
+              onClick={() => setIsStockModalOpen(true)}
+              className="p-1.5 rounded-full text-stone-300 hover:text-stone-500 transition cursor-pointer"
+              aria-label="Acesso restrito"
             >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Número do WhatsApp (+{whatsAppNumber})</span>
-            </button>
-            <span>•</span>
-            <button
-              onClick={() => setIsGitHubModalOpen(true)}
-              className="text-stone-600 hover:underline cursor-pointer inline-flex items-center gap-1"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>Conectar com GitHub</span>
+              <Lock className="w-3 h-3" />
             </button>
           </div>
         </div>
@@ -529,11 +631,20 @@ export default function App() {
         onToggleStock={handleToggleStock}
         onUpdatePrice={handleUpdatePrice}
         onResetAll={handleResetAllStock}
-      />
-
-      <GitHubModal
-        isOpen={isGitHubModalOpen}
-        onClose={() => setIsGitHubModalOpen(false)}
+        isUnlocked={Boolean(verifiedPin)}
+        onVerifyPin={handleVerifyPin}
+        onLockPanel={handleLockPanel}
+        onUpdatePin={handleUpdatePin}
+        isSyncing={isSyncing}
+        syncError={syncError}
+        onOpenWhatsAppSettings={() => {
+          setIsStockModalOpen(false);
+          setIsSettingsModalOpen(true);
+        }}
+        onOpenShareModal={() => {
+          setIsStockModalOpen(false);
+          setIsShareModalOpen(true);
+        }}
       />
 
       <StoreSettingsModal
@@ -550,4 +661,4 @@ export default function App() {
       />
     </div>
   );
-}
+};

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
 import { CATEGORIES, formatPriceMT } from '../data/catalog';
 import {
@@ -7,12 +7,15 @@ import {
   CheckCircle2,
   XCircle,
   RotateCcw,
-  Sliders,
   DollarSign,
   Lock,
   KeyRound,
   ShieldAlert,
-  Key
+  Key,
+  Cloud,
+  Phone,
+  Share2,
+  RefreshCw
 } from 'lucide-react';
 
 interface StockManagementModalProps {
@@ -24,6 +27,14 @@ interface StockManagementModalProps {
   onToggleStock: (productId: string) => void;
   onUpdatePrice: (productId: string, newPrice: number) => void;
   onResetAll: () => void;
+  isUnlocked: boolean;
+  onVerifyPin: (pinInput: string) => Promise<boolean>;
+  onLockPanel: () => void;
+  onUpdatePin: (newPin: string) => Promise<void>;
+  isSyncing: boolean;
+  syncError: string | null;
+  onOpenWhatsAppSettings: () => void;
+  onOpenShareModal: () => void;
 }
 
 export const StockManagementModal: React.FC<StockManagementModalProps> = ({
@@ -35,16 +46,18 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
   onToggleStock,
   onUpdatePrice,
   onResetAll,
+  isUnlocked,
+  onVerifyPin,
+  onLockPanel,
+  onUpdatePin,
+  isSyncing,
+  syncError,
+  onOpenWhatsAppSettings,
+  onOpenShareModal,
 }) => {
-  // PIN authentication state
-  const [managerPin, setManagerPin] = useState<string>(() => {
-    return localStorage.getItem('tahas_manager_pin') || '1234';
-  });
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem('tahas_manager_auth') === 'true';
-  });
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
   // Search and editing state
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,38 +67,66 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
   const [isChangingPin, setIsChangingPin] = useState(false);
   const [newPinInput, setNewPinInput] = useState('');
   const [pinChangeSuccess, setPinChangeSuccess] = useState(false);
+  const [pinChangeError, setPinChangeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPinInput('');
+      setPinError(false);
+      setEditingPriceId(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleVerifyPin = (e: React.FormEvent) => {
+  const handleSubmitPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput.trim() === managerPin) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('tahas_manager_auth', 'true');
-      setPinError(false);
-      setPinInput('');
-    } else {
+    const clean = pinInput.trim();
+    if (clean.length < 4) {
       setPinError(true);
+      return;
+    }
+    setIsVerifyingPin(true);
+    setPinError(false);
+    try {
+      const ok = await onVerifyPin(clean);
+      if (ok) {
+        setPinInput('');
+        setPinError(false);
+      } else {
+        setPinError(true);
+      }
+    } catch {
+      setPinError(true);
+    } finally {
+      setIsVerifyingPin(false);
     }
   };
 
-  const handleSaveNewPin = (e: React.FormEvent) => {
+  const handleSaveNewPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPinInput.length >= 4) {
-      setManagerPin(newPinInput);
-      localStorage.setItem('tahas_manager_pin', newPinInput);
+    const clean = newPinInput.trim();
+    if (!/^[0-9]{4,6}$/.test(clean)) {
+      setPinChangeError('Use entre 4 e 6 dígitos numéricos.');
+      return;
+    }
+    setPinChangeError(null);
+    try {
+      await onUpdatePin(clean);
       setPinChangeSuccess(true);
       setTimeout(() => {
         setIsChangingPin(false);
         setPinChangeSuccess(false);
         setNewPinInput('');
       }, 1500);
+    } catch (err) {
+      setPinChangeError(err instanceof Error ? err.message : 'Erro ao guardar PIN.');
     }
   };
 
   const handleLogout = () => {
-    setIsAuthenticated(false);
-    sessionStorage.removeItem('tahas_manager_auth');
+    onLockPanel();
+    onClose();
   };
 
   const outOfStockSet = new Set(outOfStockIds);
@@ -120,7 +161,7 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 sm:p-4"
     >
-      <div className="w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="w-full max-w-2xl max-h-[92vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 bg-stone-900 text-white">
           <div className="flex items-center gap-2.5">
@@ -129,13 +170,13 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
-                <span>Área Restrita do Gerente</span>
+                <span>Painel Secreto do Proprietário</span>
                 <span className="text-[10px] bg-amber-400 text-stone-900 font-extrabold px-1.5 py-0.5 rounded">
                   PIN Protegido
                 </span>
               </h2>
               <p className="text-xs text-stone-400">
-                Acesso exclusivo para o responsável do talho
+                Sincronização imediata para os telemóveis de todos os clientes
               </p>
             </div>
           </div>
@@ -147,8 +188,8 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
           </button>
         </div>
 
-        {/* If NOT Authenticated: Show PIN Entry */}
-        {!isAuthenticated ? (
+        {/* If NOT Unlocked: Show PIN Entry */}
+        {!isUnlocked ? (
           <div className="p-6 sm:p-8 flex flex-col items-center justify-center text-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mb-1">
               <KeyRound className="w-8 h-8" />
@@ -156,14 +197,14 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
 
             <div>
               <h3 className="text-lg font-bold text-stone-900">
-                Digite o PIN de Segurança
+                Digite o PIN do Proprietário
               </h3>
               <p className="text-xs text-stone-500 mt-1 max-w-sm">
-                Para que clientes comuns não alterem o stock ou os preços, esta área é protegida por um código de 4 dígitos.
+                Introduza o seu PIN numérico de 4 a 6 dígitos para abrir a gestão de stock e preços em tempo real.
               </p>
             </div>
 
-            <form onSubmit={handleVerifyPin} className="w-full max-w-xs space-y-3 pt-2">
+            <form onSubmit={handleSubmitPin} className="w-full max-w-xs space-y-3 pt-2">
               <div>
                 <input
                   type="password"
@@ -171,10 +212,10 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
                   maxLength={6}
                   value={pinInput}
                   onChange={(e) => {
-                    setPinInput(e.target.value);
+                    setPinInput(e.target.value.replace(/[^0-9]/g, ''));
                     if (pinError) setPinError(false);
                   }}
-                  placeholder="Introduza o PIN"
+                  placeholder="••••"
                   className={`w-full text-center tracking-widest text-2xl font-bold py-2.5 px-4 rounded-xl border ${
                     pinError
                       ? 'border-red-500 bg-red-50 text-red-700 focus:ring-red-400'
@@ -192,21 +233,47 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-[#8b1e1e] hover:bg-[#731717] text-white rounded-xl font-bold text-sm shadow-sm transition cursor-pointer"
+                disabled={isVerifyingPin}
+                className="w-full py-2.5 bg-[#8b1e1e] hover:bg-[#731717] disabled:opacity-60 text-white rounded-xl font-bold text-sm shadow-sm transition cursor-pointer flex items-center justify-center gap-2"
               >
-                Entrar no Painel
+                {isVerifyingPin ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>A verificar PIN...</span>
+                  </>
+                ) : (
+                  <span>Desbloquear Painel</span>
+                )}
               </button>
             </form>
-
-            <div className="pt-4 border-t border-stone-100 text-center">
-              <p className="text-[11px] text-stone-400">
-                💡 <strong>Dica de Acesso:</strong> O PIN padrão inicial é <span className="font-mono font-bold text-stone-700 bg-stone-100 px-1.5 py-0.5 rounded">1234</span> (pode ser alterado após entrar).
-              </p>
-            </div>
           </div>
         ) : (
-          /* Authenticated: Show Stock & Price Control Panel */
+          /* Unlocked: Show Stock & Price Control Panel */
           <>
+            {/* Cloud Sync Status Banner */}
+            <div className="px-4 py-2.5 bg-emerald-50 border-b border-emerald-200 text-emerald-900 flex items-center justify-between gap-2 flex-wrap text-xs">
+              <div className="flex items-center gap-2">
+                <Cloud className="w-4 h-4 text-emerald-600 flex-none" />
+                <span>
+                  <strong>Sincronização em Tempo Real Ativa:</strong> Qualquer alteração atualiza automaticamente nos telemóveis dos clientes.
+                </span>
+              </div>
+
+              {isSyncing && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  A sincronizar...
+                </span>
+              )}
+            </div>
+
+            {syncError && (
+              <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-red-700 text-xs flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 flex-none" />
+                <span>{syncError}</span>
+              </div>
+            )}
+
             {/* Top Toolbar / Mode switch */}
             <div className="p-4 bg-stone-50 border-b border-stone-200 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -226,20 +293,39 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <button
-                    onClick={() => setIsChangingPin(!isChangingPin)}
-                    className="text-[11px] text-stone-600 hover:text-stone-900 bg-white border border-stone-300 px-2 py-1 rounded-lg flex items-center gap-1 font-medium cursor-pointer"
+                    onClick={onOpenWhatsAppSettings}
+                    className="text-[11px] text-stone-700 hover:text-stone-900 bg-white border border-stone-300 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium cursor-pointer"
+                  >
+                    <Phone className="w-3 h-3 text-emerald-600" />
+                    <span>WhatsApp</span>
+                  </button>
+
+                  <button
+                    onClick={onOpenShareModal}
+                    className="text-[11px] text-stone-700 hover:text-stone-900 bg-white border border-stone-300 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium cursor-pointer"
+                  >
+                    <Share2 className="w-3 h-3 text-[#8b1e1e]" />
+                    <span>QR Code</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsChangingPin(!isChangingPin);
+                      setPinChangeError(null);
+                    }}
+                    className="text-[11px] text-stone-700 hover:text-stone-900 bg-white border border-stone-300 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium cursor-pointer"
                   >
                     <Key className="w-3 h-3 text-amber-600" />
-                    <span>Mudar PIN ({managerPin})</span>
+                    <span>Mudar PIN</span>
                   </button>
 
                   <button
                     onClick={handleLogout}
-                    className="text-[11px] text-stone-400 hover:text-stone-600 px-1.5 py-1"
+                    className="text-[11px] text-red-700 hover:text-red-900 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg font-semibold cursor-pointer"
                   >
-                    Sair
+                    Trancar
                   </button>
                 </div>
               </div>
@@ -250,25 +336,30 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
                   onSubmit={handleSaveNewPin}
                   className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 flex-wrap"
                 >
-                  <span className="text-xs font-bold text-amber-900">Novo PIN:</span>
+                  <span className="text-xs font-bold text-amber-900">Novo PIN (4-6 dígitos):</span>
                   <input
                     type="password"
                     inputMode="numeric"
                     maxLength={6}
                     value={newPinInput}
-                    onChange={(e) => setNewPinInput(e.target.value)}
-                    placeholder="Mínimo 4 dígitos"
+                    onChange={(e) => setNewPinInput(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="Ex: 2580"
                     className="px-2.5 py-1 text-xs bg-white border border-amber-300 rounded-lg focus:ring-1 focus:ring-amber-500 w-32"
                   />
                   <button
                     type="submit"
                     className="px-3 py-1 bg-amber-700 text-white rounded-lg text-xs font-bold hover:bg-amber-800 cursor-pointer"
                   >
-                    Gravar
+                    Gravar PIN na Nuvem
                   </button>
                   {pinChangeSuccess && (
                     <span className="text-xs text-emerald-700 font-bold">
-                      ✓ PIN alterado com sucesso!
+                      ✓ PIN atualizado na nuvem!
+                    </span>
+                  )}
+                  {pinChangeError && (
+                    <span className="text-xs text-red-600 font-semibold">
+                      {pinChangeError}
                     </span>
                   )}
                 </form>
@@ -405,7 +496,7 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
             {/* Footer */}
             <div className="p-4 bg-stone-100 border-t border-stone-200 flex items-center justify-between">
               <p className="text-[11px] text-stone-500">
-                🔒 Autenticado como Gerente. As alterações são gravadas na hora.
+                🔒 Modo Proprietário Ativo · Clique em &ldquo;Trancar&rdquo; para bloquear com PIN.
               </p>
               <button
                 onClick={onClose}

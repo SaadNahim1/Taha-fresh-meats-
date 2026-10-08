@@ -4,9 +4,29 @@ import { Phone, ShieldCheck, Clock, MapPin, MessageCircle } from 'lucide-react';
 
 interface HeaderProps {
   whatsAppNumber: string;
+  onSecretUnlock?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ whatsAppNumber }) => {
+export const Header: React.FC<HeaderProps> = ({ whatsAppNumber, onSecretUnlock }) => {
+  const tapCountRef = React.useRef(0);
+  const tapTimerRef = React.useRef<number | null>(null);
+
+  const handleLogoTap = () => {
+    if (!onSecretUnlock) return;
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) {
+      window.clearTimeout(tapTimerRef.current);
+    }
+    if (tapCountRef.current >= 3) {
+      tapCountRef.current = 0;
+      onSecretUnlock();
+      return;
+    }
+    tapTimerRef.current = window.setTimeout(() => {
+      tapCountRef.current = 0;
+    }, 900);
+  };
+
   return (
     <header className="bg-gradient-to-b from-[#6b1414] via-[#8b1e1e] to-[#741515] text-white shadow-md border-b border-[#a82a2a]/30">
       {/* Top micro bar with contact & hours */}
@@ -28,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({ whatsAppNumber }) => {
               className="hover:text-white transition flex items-center gap-1 font-semibold"
             >
               <Phone className="w-3 h-3 text-emerald-400" />
-              <span>+258 84 752 1920</span>
+              <span>+{whatsAppNumber}</span>
             </a>
           </div>
         </div>
@@ -39,7 +59,10 @@ export const Header: React.FC<HeaderProps> = ({ whatsAppNumber }) => {
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           {/* Logo & Brand Details */}
           <div className="flex items-center gap-3.5 w-full sm:w-auto text-left">
-            <div className="relative flex-none">
+            <div
+              onClick={handleLogoTap}
+              className="relative flex-none select-none"
+            >
               <img
                 src={TAHA_LOGO_BASE64}
                 alt={STORE_NAME}

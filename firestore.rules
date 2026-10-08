@@ -1,0 +1,195 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default-Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Returns the active owner PIN before the current transaction/batch ('1234' if not yet customized)
+    function getActivePin() {
+      return exists(/databases/$(database)/documents/ownerSettings/security)
+        ? get(/databases/$(database)/documents/ownerSettings/security).data.pinCode
+        : '1234';
+    }
+
+    // Verifies that the current atomic batch includes a valid PIN proof at /ownerAuth/pinChallenge
+    function hasValidPinChallengeInBatch() {
+      return existsAfter(/databases/$(database)/documents/ownerAuth/pinChallenge)
+        && getAfter(/databases/$(database)/documents/ownerAuth/pinChallenge).data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/ownerAuth/pinChallenge).data.submittedPin == getActivePin();
+    }
+
+    // 3. Validation Blueprints
+    function isValidCatalogConfig(data) {
+      return data.keys().hasAll([
+          'configId',
+          'outOfStockMap',
+          'customPrices',
+          'orderWhatsApp',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'configId',
+          'outOfStockMap',
+          'customPrices',
+          'orderWhatsApp',
+          'updatedAt'
+        ])
+        && data.configId is string
+        && data.configId.size() >= 4
+        && data.configId.size() <= 4
+        && data.configId.matches('^live$')
+        && data.outOfStockMap is map
+        && data.outOfStockMap.size() <= 200
+        && data.customPrices is map
+        && data.customPrices.size() <= 200
+        && data.orderWhatsApp is string
+        && data.orderWhatsApp.size() >= 8
+        && data.orderWhatsApp.size() <= 20
+        && data.orderWhatsApp.matches('^[0-9]+$')
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOwnerSecuritySetting(data) {
+      return data.keys().hasAll([
+          'settingId',
+          'pinCode',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'settingId',
+          'pinCode',
+          'updatedAt'
+        ])
+        && data.settingId is string
+        && data.settingId.size() >= 8
+        && data.settingId.size() <= 8
+        && data.settingId.matches('^security$')
+        && data.pinCode is string
+        && data.pinCode.size() >= 4
+        && data.pinCode.size() <= 6
+        && data.pinCode.matches('^[0-9]+$')
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOwnerPinChallenge(data) {
+      return data.keys().hasAll([
+          'challengeId',
+          'submittedPin',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'challengeId',
+          'submittedPin',
+          'updatedAt'
+        ])
+        && data.challengeId is string
+        && data.challengeId.size() >= 12
+        && data.challengeId.size() <= 12
+        && data.challengeId.matches('^pinChallenge$')
+        && data.submittedPin is string
+        && data.submittedPin.size() >= 4
+        && data.submittedPin.size() <= 6
+        && data.submittedPin.matches('^[0-9]+$')
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Rules
+    match /catalogConfig/{configId} {
+      // Public singleton read for real-time customer catalog sync (no PII or PIN stored)
+      allow get: if isValidId(configId) && configId == 'live';
+      allow list: if false;
+
+      allow create: if isValidId(configId)
+        && configId == 'live'
+        && isValidCatalogConfig(incoming())
+        && incoming().configId == configId
+        && incoming().updatedAt == request.time
+        && hasValidPinChallengeInBatch();
+
+      allow update: if isValidCatalogConfig(incoming())
+        && isValidId(configId)
+        && configId == 'live'
+        && incoming().configId == existing().configId
+        && incoming().updatedAt == request.time
+        && hasValidPinChallengeInBatch()
+        && (
+          // Action: Update Stock, Prices, or WhatsApp
+          incoming().diff(existing()).affectedKeys().hasOnly(['outOfStockMap', 'customPrices', 'orderWhatsApp', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['outOfStockMap', 'customPrices', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['outOfStockMap', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['customPrices', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['orderWhatsApp', 'updatedAt'])
+        );
+
+      allow delete: if false;
+    }
+
+    match /ownerSettings/{settingId} {
+      // Write-only: No client can ever read the secret PIN from Firestore
+      allow get: if false;
+      allow list: if false;
+
+      allow create: if isValidId(settingId)
+        && settingId == 'security'
+        && isValidOwnerSecuritySetting(incoming())
+        && incoming().settingId == settingId
+        && incoming().updatedAt == request.time
+        && hasValidPinChallengeInBatch();
+
+      allow update: if isValidOwnerSecuritySetting(incoming())
+        && isValidId(settingId)
+        && settingId == 'security'
+        && incoming().settingId == existing().settingId
+        && incoming().updatedAt == request.time
+        && hasValidPinChallengeInBatch()
+        && (
+          // Action: Rotate Owner PIN
+          incoming().diff(existing()).affectedKeys().hasOnly(['pinCode', 'updatedAt'])
+        );
+
+      allow delete: if false;
+    }
+
+    match /ownerAuth/{challengeId} {
+      // Write-only PIN verification endpoint: succeeds if and only if submittedPin == getActivePin()
+      allow get: if false;
+      allow list: if false;
+
+      allow create: if isValidId(challengeId)
+        && challengeId == 'pinChallenge'
+        && isValidOwnerPinChallenge(incoming())
+        && incoming().challengeId == challengeId
+        && incoming().updatedAt == request.time
+        && incoming().submittedPin == getActivePin();
+
+      allow update: if isValidOwnerPinChallenge(incoming())
+        && isValidId(challengeId)
+        && challengeId == 'pinChallenge'
+        && incoming().challengeId == existing().challengeId
+        && incoming().updatedAt == request.time
+        && incoming().submittedPin == getActivePin()
+        && (
+          // Action: Verify PIN Challenge
+          incoming().diff(existing()).affectedKeys().hasOnly(['submittedPin', 'updatedAt'])
+        );
+
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "CatalogConfig": {
+      "title": "CatalogConfig",
+      "description": "Singleton live store catalog configuration containing out-of-stock map, custom prices map, and public store WhatsApp number.",
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string",
+          "description": "Identifier for the configuration document (must be 'live').",
+          "minLength": 4,
+          "maxLength": 4,
+          "pattern": "^live$"
+        },
+        "outOfStockMap": {
+          "type": "object",
+          "description": "Map of product IDs to boolean out-of-stock status (max 200 entries)."
+        },
+        "customPrices": {
+          "type": "object",
+          "description": "Map of product IDs to custom numeric price in MT (max 200 entries)."
+        },
+        "orderWhatsApp": {
+          "type": "string",
+          "description": "Public WhatsApp phone number for receiving store orders.",
+          "minLength": 8,
+          "maxLength": 20,
+          "pattern": "^[0-9]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the configuration was last updated."
+        }
+      },
+      "required": [
+        "configId",
+        "outOfStockMap",
+        "customPrices",
+        "orderWhatsApp",
+        "updatedAt"
+      ]
+    },
+    "OwnerSecuritySetting": {
+      "title": "OwnerSecuritySetting",
+      "description": "Write-only owner security settings storing the active manager PIN code.",
+      "type": "object",
+      "properties": {
+        "settingId": {
+          "type": "string",
+          "description": "Identifier for the security setting document (must be 'security').",
+          "minLength": 8,
+          "maxLength": 8,
+          "pattern": "^security$"
+        },
+        "pinCode": {
+          "type": "string",
+          "description": "4 to 6 digit numeric PIN code for unlocking the manager panel.",
+          "minLength": 4,
+          "maxLength": 6,
+          "pattern": "^[0-9]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the PIN was last updated."
+        }
+      },
+      "required": ["settingId", "pinCode", "updatedAt"]
+    },
+    "OwnerPinChallenge": {
+      "title": "OwnerPinChallenge",
+      "description": "Write-only atomic batch PIN verification proof document.",
+      "type": "object",
+      "properties": {
+        "challengeId": {
+          "type": "string",
+          "description": "Identifier for the challenge document (must be 'pinChallenge').",
+          "minLength": 12,
+          "maxLength": 12,
+          "pattern": "^pinChallenge$"
+        },
+        "submittedPin": {
+          "type": "string",
+          "description": "4 to 6 digit numeric PIN submitted for verification.",
+          "minLength": 4,
+          "maxLength": 6,
+          "pattern": "^[0-9]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the PIN verification."
+        }
+      },
+      "required": ["challengeId", "submittedPin", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/catalogConfig/{configId}": {
+      "schema": { "$ref": "#/entities/CatalogConfig" },
+      "description": "Singleton document (configId='live') holding real-time stock and price overrides for all clients."
+    },
+    "/ownerSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/OwnerSecuritySetting" },
+      "description": "Write-only singleton document (settingId='security') holding the owner's active PIN code."
+    },
+    "/ownerAuth/{challengeId}": {
+      "schema": { "$ref": "#/entities/OwnerPinChallenge" },
+      "description": "Write-only singleton document (challengeId='pinChallenge') used to verify the owner PIN atomically."
+    }
+  }
+}

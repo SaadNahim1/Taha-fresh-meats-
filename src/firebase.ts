@@ -22,6 +22,15 @@ export const CHALLENGE_ID_REGEX = /^pinChallenge$/;
 export const WHATSAPP_REGEX = /^[0-9]+$/;
 export const PIN_REGEX = /^[0-9]+$/;
 export const MAX_MAP_ENTRIES = 200;
+export const MAX_CUSTOM_PRODUCTS = 100;
+
+export interface CustomProductRecord {
+  id: string;
+  name: string;
+  price: number;
+  unit: string;
+  categoryId: string;
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -90,6 +99,7 @@ testConnection();
 export interface LiveCatalogPayload {
   outOfStockIds: string[];
   customPrices: Record<string, number>;
+  customProducts: Record<string, CustomProductRecord>;
   orderWhatsApp: string;
   pinCode: string;
 }
@@ -118,6 +128,37 @@ function sanitizeCustomPrices(prices: Record<string, number>): Record<string, nu
       price > 0
     ) {
       map[id] = Math.round(price * 100) / 100;
+    }
+  }
+  return map;
+}
+
+function sanitizeCustomProducts(
+  products: Record<string, CustomProductRecord>
+): Record<string, CustomProductRecord> {
+  const map: Record<string, CustomProductRecord> = {};
+  const entries = Object.entries(products).slice(0, MAX_CUSTOM_PRODUCTS);
+  for (const [id, item] of entries) {
+    if (
+      typeof id === 'string' &&
+      id.length > 0 &&
+      id.length <= 64 &&
+      item &&
+      typeof item.name === 'string' &&
+      item.name.trim().length > 0 &&
+      typeof item.price === 'number' &&
+      Number.isFinite(item.price) &&
+      item.price > 0 &&
+      typeof item.unit === 'string' &&
+      typeof item.categoryId === 'string'
+    ) {
+      map[id] = {
+        id,
+        name: item.name.trim().slice(0, 120),
+        price: Math.round(item.price * 100) / 100,
+        unit: item.unit.trim().slice(0, 20),
+        categoryId: item.categoryId.trim().slice(0, 10),
+      };
     }
   }
   return map;
@@ -177,6 +218,7 @@ export async function saveLiveCatalogToCloud(payload: LiveCatalogPayload): Promi
   const submittedPin = sanitizePin(payload.pinCode);
   const outOfStockMap = sanitizeOutOfStockMap(payload.outOfStockIds);
   const customPrices = sanitizeCustomPrices(payload.customPrices);
+  const customProducts = sanitizeCustomProducts(payload.customProducts);
   const orderWhatsApp = sanitizeWhatsApp(payload.orderWhatsApp);
 
   const path = 'catalogConfig/live';
@@ -194,6 +236,7 @@ export async function saveLiveCatalogToCloud(payload: LiveCatalogPayload): Promi
       configId: 'live',
       outOfStockMap,
       customPrices,
+      customProducts,
       orderWhatsApp,
       updatedAt: serverTimestamp(),
     });

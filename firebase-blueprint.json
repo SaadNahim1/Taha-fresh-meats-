@@ -2,7 +2,7 @@
   "entities": {
     "CatalogConfig": {
       "title": "CatalogConfig",
-      "description": "Singleton live store catalog configuration containing out-of-stock map, custom prices map, and public store WhatsApp number.",
+      "description": "Singleton live store catalog configuration containing out-of-stock map, custom prices map, custom added products map, and public store WhatsApp number.",
       "type": "object",
       "properties": {
         "configId": {
@@ -19,6 +19,10 @@
         "customPrices": {
           "type": "object",
           "description": "Map of product IDs to custom numeric price in MT (max 200 entries)."
+        },
+        "customProducts": {
+          "type": "object",
+          "description": "Map of custom products added by the store owner (max 100 entries)."
         },
         "orderWhatsApp": {
           "type": "string",
@@ -37,6 +41,7 @@
         "configId",
         "outOfStockMap",
         "customPrices",
+        "customProducts",
         "orderWhatsApp",
         "updatedAt"
       ]
@@ -99,7 +104,7 @@
   "firestore": {
     "/catalogConfig/{configId}": {
       "schema": { "$ref": "#/entities/CatalogConfig" },
-      "description": "Singleton document (configId='live') holding real-time stock and price overrides for all clients."
+      "description": "Singleton document (configId='live') holding real-time stock, custom prices, and custom products for all clients."
     },
     "/ownerSettings/{settingId}": {
       "schema": { "$ref": "#/entities/OwnerSecuritySetting" },

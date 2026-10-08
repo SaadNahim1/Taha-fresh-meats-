@@ -15,7 +15,9 @@ import {
   Cloud,
   Phone,
   Share2,
-  RefreshCw
+  RefreshCw,
+  Plus,
+  Trash2
 } from 'lucide-react';
 
 interface StockManagementModalProps {
@@ -24,8 +26,16 @@ interface StockManagementModalProps {
   products: Product[];
   outOfStockIds: string[];
   customPrices: Record<string, number>;
+  customProductIds: string[];
   onToggleStock: (productId: string) => void;
   onUpdatePrice: (productId: string, newPrice: number) => void;
+  onAddCustomProduct: (item: {
+    name: string;
+    price: number;
+    unit: string;
+    categoryId: string;
+  }) => void;
+  onDeleteCustomProduct: (productId: string) => void;
   onResetAll: () => void;
   isUnlocked: boolean;
   onVerifyPin: (pinInput: string) => Promise<boolean>;
@@ -37,14 +47,28 @@ interface StockManagementModalProps {
   onOpenShareModal: () => void;
 }
 
+const UNIT_OPTIONS = [
+  'por kg',
+  'un',
+  '1 kg',
+  '2 kg',
+  '500 g',
+  '250 g',
+  '6 un',
+  '12 un'
+];
+
 export const StockManagementModal: React.FC<StockManagementModalProps> = ({
   isOpen,
   onClose,
   products,
   outOfStockIds,
   customPrices,
+  customProductIds,
   onToggleStock,
   onUpdatePrice,
+  onAddCustomProduct,
+  onDeleteCustomProduct,
   onResetAll,
   isUnlocked,
   onVerifyPin,
@@ -69,11 +93,20 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
   const [pinChangeSuccess, setPinChangeSuccess] = useState(false);
   const [pinChangeError, setPinChangeError] = useState<string | null>(null);
 
+  // Add new product state
+  const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdPrice, setNewProdPrice] = useState('');
+  const [newProdUnit, setNewProdUnit] = useState('por kg');
+  const [newProdCatId, setNewProdCatId] = useState('0');
+  const [addProdSuccess, setAddProdSuccess] = useState(false);
+
   useEffect(() => {
     if (!isOpen) {
       setPinInput('');
       setPinError(false);
       setEditingPriceId(null);
+      setIsAddingProduct(false);
     }
   }, [isOpen]);
 
@@ -124,12 +157,34 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
     }
   };
 
+  const handleCreateProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    const priceNum = parseFloat(newProdPrice);
+    if (!newProdName.trim() || isNaN(priceNum) || priceNum <= 0) {
+      return;
+    }
+    onAddCustomProduct({
+      name: newProdName.trim(),
+      price: priceNum,
+      unit: newProdUnit,
+      categoryId: newProdCatId,
+    });
+    setNewProdName('');
+    setNewProdPrice('');
+    setAddProdSuccess(true);
+    setTimeout(() => {
+      setAddProdSuccess(false);
+      setIsAddingProduct(false);
+    }, 1200);
+  };
+
   const handleLogout = () => {
     onLockPanel();
     onClose();
   };
 
   const outOfStockSet = new Set(outOfStockIds);
+  const customIdSet = new Set(customProductIds);
 
   const filteredProducts = products.filter((p) => {
     const matchesCat = !selectedCatId || p.categoryId === selectedCatId;
@@ -278,8 +333,19 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
             <div className="p-4 bg-stone-50 border-b border-stone-200 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-stone-700 font-bold">
-                    Stock Esgotado:{' '}
+                  <button
+                    onClick={() => {
+                      setIsAddingProduct(!isAddingProduct);
+                      setIsChangingPin(false);
+                    }}
+                    className="px-3 py-1.5 bg-[#8b1e1e] hover:bg-[#731717] text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Novo Produto</span>
+                  </button>
+
+                  <span className="text-xs text-stone-700 font-bold ml-1">
+                    Esgotados:{' '}
                     <strong className="text-red-600 font-extrabold">{outOfStockIds.length}</strong>
                   </span>
                   {outOfStockIds.length > 0 && (
@@ -313,6 +379,7 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
                   <button
                     onClick={() => {
                       setIsChangingPin(!isChangingPin);
+                      setIsAddingProduct(false);
                       setPinChangeError(null);
                     }}
                     className="text-[11px] text-stone-700 hover:text-stone-900 bg-white border border-stone-300 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium cursor-pointer"
@@ -329,6 +396,91 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Add New Product Form */}
+              {isAddingProduct && (
+                <form
+                  onSubmit={handleCreateProduct}
+                  className="p-3.5 bg-white border-2 border-[#8b1e1e]/20 rounded-xl space-y-2.5 shadow-2xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-[#8b1e1e]">
+                      Adicionar Novo Produto ao Catálogo
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingProduct(false)}
+                      className="text-[11px] text-stone-400 hover:text-stone-600"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      required
+                      maxLength={100}
+                      value={newProdName}
+                      onChange={(e) => setNewProdName(e.target.value)}
+                      placeholder="Nome do corte / produto (ex: Costeletas de Borrego)"
+                      className="px-3 py-2 text-xs bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]"
+                    />
+
+                    <select
+                      value={newProdCatId}
+                      onChange={(e) => setNewProdCatId(e.target.value)}
+                      className="px-3 py-2 text-xs bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]"
+                    >
+                      {CATEGORIES.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="relative flex-1 min-w-[120px]">
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        step="any"
+                        value={newProdPrice}
+                        onChange={(e) => setNewProdPrice(e.target.value)}
+                        placeholder="Preço em MT (ex: 1200)"
+                        className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]"
+                      />
+                    </div>
+
+                    <select
+                      value={newProdUnit}
+                      onChange={(e) => setNewProdUnit(e.target.value)}
+                      className="px-3 py-2 text-xs bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8b1e1e]"
+                    >
+                      {UNIT_OPTIONS.map((u) => (
+                        <option key={u} value={u}>
+                          Unidade: {u}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                    >
+                      Adicionar ao Stock
+                    </button>
+                  </div>
+
+                  {addProdSuccess && (
+                    <p className="text-xs text-emerald-700 font-bold">
+                      ✓ Novo produto adicionado e sincronizado com os clientes!
+                    </p>
+                  )}
+                </form>
+              )}
 
               {/* Change PIN box */}
               {isChangingPin && (
@@ -401,6 +553,7 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
               ) : (
                 filteredProducts.map((p) => {
                   const isOut = outOfStockSet.has(p.id);
+                  const isCustom = customIdSet.has(p.id);
                   const currentPrice = customPrices[p.id] ?? p.price;
                   const isEditingPrice = editingPriceId === p.id;
 
@@ -419,6 +572,11 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
                           <span className="text-[10px] text-stone-500 bg-stone-100 px-1.5 py-0.2 rounded">
                             {p.category}
                           </span>
+                          {isCustom && (
+                            <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded">
+                              Novo
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2 mt-1">
@@ -463,8 +621,18 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Stock Status Toggle Button */}
-                      <div className="flex-none">
+                      {/* Stock Status Toggle & Custom Delete Button */}
+                      <div className="flex items-center gap-1.5 flex-none">
+                        {isCustom && (
+                          <button
+                            onClick={() => onDeleteCustomProduct(p.id)}
+                            className="p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                            title="Remover este produto adicionado"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+
                         <button
                           onClick={() => onToggleStock(p.id)}
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer ${

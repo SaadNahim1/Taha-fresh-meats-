@@ -10,7 +10,8 @@ import {
   handleFirestoreError,
   verifyOwnerPinInCloud,
   saveLiveCatalogToCloud,
-  saveOwnerPinToCloud
+  saveOwnerPinToCloud,
+  CustomProductRecord
 } from './firebase';
 import { Header } from './components/Header';
 import { SearchBar } from './components/SearchBar';
@@ -65,7 +66,7 @@ export default function App() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
 
-  // Stock and custom price state (synced in real time via Firestore)
+  // Stock, custom prices, and custom products (synced in real time via Firestore)
   const [outOfStockIds, setOutOfStockIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('tahas_out_of_stock');
@@ -78,6 +79,15 @@ export default function App() {
   const [customPrices, setCustomPrices] = useState<Record<string, number>>(() => {
     try {
       const saved = localStorage.getItem('tahas_custom_prices');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [customProducts, setCustomProducts] = useState<Record<string, CustomProductRecord>>(() => {
+    try {
+      const saved = localStorage.getItem('tahas_custom_products');
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -119,6 +129,17 @@ export default function App() {
             });
             setCustomPrices(prices);
             localStorage.setItem('tahas_custom_prices', JSON.stringify(prices));
+          }
+          if (data.customProducts && typeof data.customProducts === 'object') {
+            const prods: Record<string, CustomProductRecord> = {};
+            Object.entries(data.customProducts).forEach(([k, v]) => {
+              const rec = v as CustomProductRecord;
+              if (rec && typeof rec.name === 'string' && typeof rec.price === 'number') {
+                prods[k] = rec;
+              }
+            });
+            setCustomProducts(prods);
+            localStorage.setItem('tahas_custom_products', JSON.stringify(prods));
           }
           if (typeof data.orderWhatsApp === 'string' && data.orderWhatsApp.length >= 8) {
             setWhatsAppNumber(data.orderWhatsApp);
@@ -166,6 +187,7 @@ export default function App() {
     async (
       nextOutOfStock: string[],
       nextPrices: Record<string, number>,
+      nextCustomProducts: Record<string, CustomProductRecord>,
       nextWhatsApp: string,
       pinOverride?: string
     ) => {
@@ -177,6 +199,7 @@ export default function App() {
         await saveLiveCatalogToCloud({
           outOfStockIds: nextOutOfStock,
           customPrices: nextPrices,
+          customProducts: nextCustomProducts,
           orderWhatsApp: nextWhatsApp,
           pinCode: activePin,
         });
@@ -212,7 +235,7 @@ export default function App() {
   const handleSaveWhatsApp = (num: string) => {
     setWhatsAppNumber(num);
     localStorage.setItem('tahas_whatsapp', num);
-    void syncCatalogState(outOfStockIds, customPrices, num);
+    void syncCatalogState(outOfStockIds, customPrices, customProducts, num);
   };
 
   const handleToggleStock = (productId: string) => {
@@ -220,7 +243,7 @@ export default function App() {
       const exists = prev.includes(productId);
       const updated = exists ? prev.filter((id) => id !== productId) : [...prev, productId];
       localStorage.setItem('tahas_out_of_stock', JSON.stringify(updated));
-      void syncCatalogState(updated, customPrices, whatsAppNumber);
+      void syncCatalogState(updated, customPrices, customProducts, whatsAppNumber);
       return updated;
     });
   };
@@ -229,7 +252,39 @@ export default function App() {
     setCustomPrices((prev) => {
       const updated = { ...prev, [productId]: newPrice };
       localStorage.setItem('tahas_custom_prices', JSON.stringify(updated));
-      void syncCatalogState(outOfStockIds, updated, whatsAppNumber);
+      void syncCatalogState(outOfStockIds, updated, customProducts, whatsAppNumber);
+      return updated;
+    });
+  };
+
+  const handleAddCustomProduct = (item: {
+    name: string;
+    price: number;
+    unit: string;
+    categoryId: string;
+  }) => {
+    const newId = `custom-${Date.now()}`;
+    const record: CustomProductRecord = {
+      id: newId,
+      name: item.name,
+      price: item.price,
+      unit: item.unit,
+      categoryId: item.categoryId,
+    };
+    setCustomProducts((prev) => {
+      const updated = { ...prev, [newId]: record };
+      localStorage.setItem('tahas_custom_products', JSON.stringify(updated));
+      void syncCatalogState(outOfStockIds, customPrices, updated, whatsAppNumber);
+      return updated;
+    });
+  };
+
+  const handleDeleteCustomProduct = (productId: string) => {
+    setCustomProducts((prev) => {
+      const updated = { ...prev };
+      delete updated[productId];
+      localStorage.setItem('tahas_custom_products', JSON.stringify(updated));
+      void syncCatalogState(outOfStockIds, customPrices, updated, whatsAppNumber);
       return updated;
     });
   };
@@ -237,7 +292,7 @@ export default function App() {
   const handleResetAllStock = () => {
     setOutOfStockIds([]);
     localStorage.removeItem('tahas_out_of_stock');
-    void syncCatalogState([], customPrices, whatsAppNumber);
+    void syncCatalogState([], customPrices, customProducts, whatsAppNumber);
   };
 
   const handleUpdatePin = async (newPin: string) => {
@@ -255,10 +310,28 @@ export default function App() {
     }
   };
 
-  // Products with dynamic stock status and prices applied
+  // Merge base catalog products + owner-added custom products, with dynamic stock & prices
   const productsWithStatus: Product[] = useMemo(() => {
     const outSet = new Set(outOfStockIds);
-    return ALL_PRODUCTS.map((prod) => {
+    const customList: Product[] = Object.values(customProducts).map((cp) => {
+      const cat = CATEGORIES.find((c) => c.id === cp.categoryId) || CATEGORIES[0];
+      const isPerKg = cp.unit === 'por kg';
+      return {
+        id: cp.id,
+        name: cp.name,
+        price: cp.price,
+        unit: cp.unit,
+        category: cat.name,
+        categoryId: cat.id,
+        isPerKg,
+        step: isPerKg ? 0.5 : 1,
+        popular: true,
+        badge: 'Novo',
+      };
+    });
+
+    const combined = [...customList, ...ALL_PRODUCTS];
+    return combined.map((prod) => {
       const customPrice = customPrices[prod.id];
       return {
         ...prod,
@@ -266,7 +339,7 @@ export default function App() {
         outOfStock: outSet.has(prod.id),
       };
     });
-  }, [outOfStockIds, customPrices]);
+  }, [outOfStockIds, customPrices, customProducts]);
 
   // Update product quantity in cart
   const updateQuantity = (productId: string, delta: number) => {
@@ -452,7 +525,7 @@ export default function App() {
               }
             }}
             categoryCounts={categoryCounts}
-            totalCount={ALL_PRODUCTS.length}
+            totalCount={productsWithStatus.length}
           />
         </div>
       </div>
@@ -629,8 +702,11 @@ export default function App() {
         products={productsWithStatus}
         outOfStockIds={outOfStockIds}
         customPrices={customPrices}
+        customProductIds={Object.keys(customProducts)}
         onToggleStock={handleToggleStock}
         onUpdatePrice={handleUpdatePrice}
+        onAddCustomProduct={handleAddCustomProduct}
+        onDeleteCustomProduct={handleDeleteCustomProduct}
         onResetAll={handleResetAllStock}
         isUnlocked={Boolean(verifiedPin)}
         onVerifyPin={handleVerifyPin}

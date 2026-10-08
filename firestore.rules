@@ -40,6 +40,7 @@ service cloud.firestore {
           'configId',
           'outOfStockMap',
           'customPrices',
+          'customProducts',
           'orderWhatsApp',
           'updatedAt'
         ])
@@ -47,6 +48,7 @@ service cloud.firestore {
           'configId',
           'outOfStockMap',
           'customPrices',
+          'customProducts',
           'orderWhatsApp',
           'updatedAt'
         ])
@@ -58,6 +60,8 @@ service cloud.firestore {
         && data.outOfStockMap.size() <= 200
         && data.customPrices is map
         && data.customPrices.size() <= 200
+        && data.customProducts is map
+        && data.customProducts.size() <= 100
         && data.orderWhatsApp is string
         && data.orderWhatsApp.size() >= 8
         && data.orderWhatsApp.size() <= 20
@@ -129,12 +133,14 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && hasValidPinChallengeInBatch()
         && (
-          // Action: Update Stock, Prices, or WhatsApp
-          incoming().diff(existing()).affectedKeys().hasOnly(['outOfStockMap', 'customPrices', 'orderWhatsApp', 'updatedAt']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['outOfStockMap', 'customPrices', 'updatedAt']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['outOfStockMap', 'updatedAt']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['customPrices', 'updatedAt']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['orderWhatsApp', 'updatedAt'])
+          // Action: Update Stock, Prices, Custom Products, or WhatsApp
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'outOfStockMap',
+            'customPrices',
+            'customProducts',
+            'orderWhatsApp',
+            'updatedAt'
+          ])
         );
 
       allow delete: if false;

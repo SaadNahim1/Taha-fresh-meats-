@@ -1,5 +1,5 @@
 import React from 'react';
-import { TAHA_LOGO_BASE64, STORE_NAME, STORE_TAGLINE } from '../assets/logo';
+import { TAHA_LOGO_BASE64, TAHA_LOGO_SVG_FALLBACK, STORE_NAME, STORE_TAGLINE } from '../assets/logo';
 import { Phone, ShieldCheck, Clock, MapPin, MessageCircle } from 'lucide-react';
 
 interface HeaderProps {
@@ -67,6 +67,12 @@ export const Header: React.FC<HeaderProps> = ({ whatsAppNumber, onSecretUnlock }
                 src={TAHA_LOGO_BASE64}
                 alt={STORE_NAME}
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src !== TAHA_LOGO_SVG_FALLBACK) {
+                    target.src = TAHA_LOGO_SVG_FALLBACK;
+                  }
+                }}
                 className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-amber-300 shadow-md object-cover bg-white cursor-pointer"
               />
               <span

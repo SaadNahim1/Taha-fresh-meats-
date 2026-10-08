@@ -601,10 +601,11 @@ export default function App() {
             {/* Discreet hidden lock icon for the store owner */}
             <button
               onClick={() => setIsStockModalOpen(true)}
-              className="p-1.5 rounded-full text-stone-300 hover:text-stone-500 transition cursor-pointer"
+              className="p-1.5 rounded-full text-stone-400 hover:text-[#8b1e1e] hover:bg-stone-100 transition cursor-pointer"
+              title="Acesso do Proprietário"
               aria-label="Acesso restrito"
             >
-              <Lock className="w-3 h-3" />
+              <Lock className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

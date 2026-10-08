@@ -66,7 +66,8 @@ export const Header: React.FC<HeaderProps> = ({ whatsAppNumber, onSecretUnlock }
               <img
                 src={TAHA_LOGO_BASE64}
                 alt={STORE_NAME}
-                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-amber-300 shadow-md object-cover bg-white"
+                referrerPolicy="no-referrer"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-amber-300 shadow-md object-cover bg-white cursor-pointer"
               />
               <span
                 className="absolute -bottom-1 -right-1 bg-emerald-600 text-white p-1 rounded-full text-[10px] shadow"
